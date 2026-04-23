@@ -1,0 +1,118 @@
+challenge link: https://www.mlh.com/challenges/019daf61-bc52-ce71-962d-041cc6c9863d
+
+DAY 2: Persistent Wallet
+
+The Scenario:
+    On Day 1 you generated a keypair and funded it manually through a web faucet. That works for one-off testing, but in real applications you'll want to create and manage wallets in code.
+    Today you're going to build a script that creates a keypair, saves it to a file so you can reuse it, and checks its balance.
+
+    In web2 terms, Day 1 was like creating a user account manually in a database admin tool. Today you're building the signup API.
+
+The Challenge:
+    Build a script that generates a keypair, saves it to a local JSON file, and can reload it on subsequent runs. The script should display the wallet's address and current balance.
+
+What You'll Need:
+    - Your Day 1 project folder with @solana/kit already installed
+    - A terminal
+    - A code editor
+
+Steps:
+    Create a new file called persistent-wallet.mjs
+
+    ```
+        import {
+            createSolanaRpc,
+            devnet,
+            generateKeyPair,
+            createKeyPairSignerFromBytes,
+            createSignerFromKeyPair,
+        } from "@solana/kit";
+        import { readFile, writeFile } from "node:fs/promises";
+
+        const WALLET_FILE = "wallet.json";
+        const rpc = createSolanaRpc(devnet("https://api.devnet.solana.com"));
+
+        async function loadOrCreateWallet() {
+            try {
+                // Try to load an existing wallet
+                const data = JSON.parse(await readfFile(WALLET_FILE, "utf-8"));
+                const secretBytes = new Uint8Array(data.secretKey);
+                const wallet = await createKeyPairSignerFromBytes(secretBytes);
+                console.log("Loaded existing wallet:", wallet.address);
+                return wallet;
+            } catch {
+                // No wallet file found, create a new one
+                // Pass `true` so the keys are extractable for persistence
+                const keyPair = await generateKeyPair(true);
+
+                // Export the public key (raw format works for public keys)
+                const publicKeyBytes = new Uint8Array(
+                    await crypto.subtle.exportKey("raw", keyPair.publicKey)
+                );
+
+                // Export the private key using pkcs8 format
+                // (Node.js does not support "raw" export for Ed25519 private keys)
+                const pkcs8 = await crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
+                const privateKeyBytes = new Uint8Array(pkcs8).slice(-32);
+
+                // Solana keypair format: 64 bytes (32 private + 32 public)
+                const keypairBytes = new Uint8Array(64);
+                keypairBytes.set(privateKeyBytes, 0);
+                keypairBytes.set(publicKeyBytes, 32);
+
+                await writeFile(
+                    WALLET_FILE,
+                    JSON.stringify({ secretKey: Array.from(keypairBytes) })
+                );
+
+                const wallet = await createSignerFromKeyPair(keyPair);
+                console.log("created new wallet:", wallet.address);
+                console.log(`Saved to ${WALLET_FILE}`);
+                return wallet;
+            }
+        }
+
+        const wallet = await loadOrCreateWallet();
+
+        // Check balance
+        const { value: balance } = await rpc.getBalance(wallet.address).send();
+        const balanceInSol = Number(balance) / 1_000_000_000
+
+        console.log(`\nAddress: ${wallet.address}`);
+        console.log(`Balance: ${balanceInSol} SOL`);
+
+        if (balanceInSol === 0) {
+            console.log(
+                `\nThis wallet has no SOL. Visit https://faucet.solana.com/ and airdrop some to:`
+            );
+            console.log(wallet.address);
+        }
+    ```
+
+Run It: node persistent-wallet.mjs
+    The first run creates a new wallet and saves it to `wallet.json`. Every subsequent run loads the same wallet. Fund it through the faucet once and the balance will persist across runs.
+
+What Just Happened:
+
+    You built a reusable wallet that survives between script runs. The keypair is saved to a JSON file containing the 64-byte secret key (32 bytes private key + 32 bytes public key).
+    This is the same format the Solana CLI uses for its keypair files.
+
+    A few things to notice:
+
+    The script uses `generateKeyPair(true)` instead of `generateKeyPairSigner()`. That `true` parameter makes the keys extractable, which is required if you want to export them for persistence.
+    Without it, `crypto.subtle.exportKey` would throw an error.
+
+    For the private key, the script exports in `pkcs8` format and takes the las 32 bytes. Node.js does support exporting Ed25519 private keys in `raw` format, so `pkcs8` is the way to go.
+    The PKCS8 wrapper adds a 16-byte header; the actual key material is the final 32 bytes.
+
+    The `wallet.json` file contains your private key. In this exercise that's fine because it's a devnet wallet with test SOL. In any real application, you'd never store private keys in plain JSON files.
+    You'd use encrypted keystores, hardware wallets, or browser wallets that manage keys for you.
+
+    The script uses `createKeyPairSignerFromBytes` to reconstruct the signer from the saved bytes. This gives you back the same `KeyPairSigner` object you had when you first generated it, with the same address and the ability to sign transactions.
+
+    You can now fund this wallet once and use it for the rest of the week's challenges without re-creating it each time.
+
+Resources:
+    - Kit keypairs guide: https://solanakit.com/docs/concepts/keypairs
+    - Kit signers guide: https://solanakit.com/docs/concepts/signers
+    - Solana faucet: https://faucet.solana.com/
