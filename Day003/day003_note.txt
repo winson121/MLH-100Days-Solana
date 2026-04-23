@@ -1,0 +1,153 @@
+challenge link: https://www.mlh.com/challenges/019db48b-d356-b721-760f-7618c0d1db74
+
+DAY 3: Understand SOL and Lamports
+
+The Scenario:
+    over the past two days, you;ve generated a keypair and built a persistent wallet. You've requested a devnet airdrop and seen a number like "2 SOL" show up in your balance.
+    But what actually is SOL? And when you start writing code that moves value around, you won't be working with SOL at all. You'll be working with lamports.
+
+    Today you'll get concrete about Solana's native token, its smallest unit, and why the distinction matters the moment you write code that touches balances.
+
+SOL and lamports
+
+    SOL is Solana's native token. It pays for transaction fees, fund accounts, and participates in staking. If you've used devnet at all, you've already handled SOL.
+    Every airdrop you requested was denominated in it.
+
+    A lamport is the smallest indivisible unit of SOL. The math is simple:
+
+    ```
+        1 SOL = 1,000,000,000 lamports (10^9)
+    ```
+
+    The name comes from Leslie Lamport, a computer scientist whose work on distributed systems (particularly around clock synchronization and concensus) laid the theoritical
+    groundwork that blockchains build on. Solana named its smallest unit after him.
+
+    If you've worked with Stripe or any payment API, this pattern is familiar. Stripe doesn't let you pass `$19.99` as a float. You pass `1999`, an integer in cents. Same idea here.
+    Solana's runtime works exclusively in lamports. When your wallet shows "2 SOL," it's converting `2000000000` lamports into a human-readable number for you.
+
+Why integers, not decimals
+
+    Floating point arithmetic is unreliable for money. Try this in any language:
+
+    ```
+        0.1 + 0.2
+        // 0.30000000000000004
+    ```
+
+    That rounding error is a nuisance in a web app. On a blockchain, where balances must be exactly reproducible across thousands of validators, it's a deal breaker.
+    Every node processing the same transaction must arrive at the same result, byte for byte. Integer math guarantees that. Lamports are always whole numbers: no fractions, no rounding, no ambiguity.
+
+Where you'll see this in practice
+
+    Wallet UIs display SOL. Everything else uses lamports.
+
+    When you query an account balance through RPC:
+
+    ```
+        const balance = await connection.getBalance(publicKey);
+        console.log(balance);
+        // 2000000000 (this is lamports, not SOL)
+    ```
+
+    When you check transaction fees:
+
+    ```
+        const fees = await connection.getFeeForMessage(message);
+        console.log(fees.value);
+        // 5000 (lamports, that's 0.000005 SOL)
+    ```
+
+    When you transfer SOL in a transaction, the amount field expects lamports. Send `1` when you meant `1000000000` and you've just transferred one-billionth of a SOL instead of one SOL.
+
+    Solana's web3.js library provides a constant to help with conversion:
+
+    ```
+        import { LAMPORTS_PER_SOL } from "@solana/web3.js";
+
+        const solAmount = 1.5;
+        const lamports = solAmount * LAMPORTS_PER_SOL;
+        // 1500000000
+    ```
+
+Common denominations
+
+    You'll encounter a few lamport amounts often enough that they're worth recognizing:
+        - `5000` lamports: a typical base transaction fee ( 0.000005 SOL)
+        - `890880`lamports: minimum rent for a basic token account (~0.00089 SOL)
+        - `1000000000` lamports: exactly 1 SOL
+        - `2000000000` lamports: the default devnet airdrop amount (2 SOL)
+    
+    You don't need to memorize these. But when you see `890880` in a program log and recognize it as a rent amount rather than a mystery number, debugging gets easier.
+
+Prerequisites
+    
+    This challenge uses the Solana CLI. Install it by running:
+        ```
+            sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+        ```
+    After installation, close and reopen your terminal. Verify it's working:
+        ```
+            solana --version
+        ```
+    If the command is not found, add it to your PATH:
+        ```
+            export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
+        ```
+    For more details, see the official installation guide (https://solana.com/docs/intro/installation/dependencies).
+
+    Then set up a CLI wallet and configure it for devnet:
+        ```
+            solana-keygen new
+            solana config set --url devnet
+        ```
+    To view your wallet address:
+        ```
+            solana address
+        ```
+    
+Today's challenge
+    
+    Open a terminal and query your devnet wallet's balance using the Solana CLI:
+
+        ```
+            solana balance --url devnet
+        ```
+    
+    That gives you SOL. Now get the raw lamport value:
+
+        ```
+            solana balance --url devnet --lamports
+        ```
+    
+    Then confirm the math. Multiply the SOL value by 1,000,000,000. The two numbers should match exactly.
+    If your balance is zero, request an airdrop first:
+    
+        ```
+            solana airdrop 2 --url devnet
+        ```
+    
+    > Note: The devnet airdrop can sometimes fail due to rate limiting. If this happens, try a smaller amount (`solana airdrop 1 --url devnet`) or use web faucet (https://faucet.solana.com) instead.
+    You can find your address by running `solana address`.
+
+    Next, look up the most recent ransaction on your account:
+        
+        ```
+            solana transaction-history $(solana address) --url devnet --limit 1
+        ```
+    
+    Take the transaction signature from the output and inspect it:
+
+        ```
+            solana confirm SIGNATURE_HERE -v --url devnet
+        ```
+    
+    Find the fee field in that output. It's in lamports. Divide by `LAMPORTS_PER_SOL` (1,000,000,000) to see what you paid in SOL.
+    For a simple transaction, it should be 0.000005 SOL, or five thousand lamports.
+
+What you learned Today
+    
+    - SOL is what users see. Lamports are what code uses.
+    - 1 SOL = 1,000,000,000 lamports. Always integers, never floats.
+    - Every RPC call, every program instruction, every fee: all denominated in lamports.
+    - The Stripe analogy holds: if you've built payment flows with amounts in cents, you already know the pattern.
+
